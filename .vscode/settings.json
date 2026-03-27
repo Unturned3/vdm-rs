@@ -1,0 +1,9 @@
+{
+    "[cpp]": {
+        "editor.suggest.insertMode": "insert",
+        "editor.formatOnSave": true,
+    },
+    "clangd.arguments": [
+        //"--tweaks=-Wno-unused-include",
+    ],
+}
