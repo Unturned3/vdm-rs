@@ -6,7 +6,10 @@ ColumnLimit: 88
 AlignAfterOpenBracket: Align
 
 # Not available in clang-format-14
-#BreakTemplateDeclarations: Yes
+BreakTemplateDeclarations: Yes
+SeparateDefinitionBlocks: Always
+
+MaxEmptyLinesToKeep: 1
 
 BreakBeforeBraces: Custom
 BraceWrapping:
