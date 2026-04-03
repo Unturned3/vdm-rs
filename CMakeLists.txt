@@ -51,4 +51,17 @@ target_compile_options(main PRIVATE
     -Wextra-semi
     -Wcast-qual -Wcast-align
     -Wredundant-decls
+    $<$<CONFIG:Debug>:
+        -fsanitize=address
+        -g
+    >
+    $<$<CONFIG:Release>:
+        -O3
+    >
+)
+
+target_link_options(main PRIVATE
+    $<$<CONFIG:Debug>:
+        -fsanitize=address
+    >
 )
