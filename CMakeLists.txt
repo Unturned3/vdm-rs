@@ -38,6 +38,11 @@ target_link_libraries(main
     argparse
 )
 
+target_include_directories(main
+    PRIVATE
+    include
+)
+
 target_compile_options(main PRIVATE
     -Wall -Wextra -Wpedantic
     -Wshadow
@@ -57,6 +62,7 @@ target_compile_options(main PRIVATE
     >
     $<$<CONFIG:Release>:
         -O3
+        -DNDEBUG
     >
 )
 
@@ -65,3 +71,8 @@ target_link_options(main PRIVATE
         -fsanitize=address
     >
 )
+
+
+#add_executable(test
+#    tests/test_linalg.cpp
+#)
