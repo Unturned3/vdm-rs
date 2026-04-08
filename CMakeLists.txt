@@ -29,21 +29,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(thirdparty/argparse)
 
-add_executable(main
-    src/main.cpp
-)
+set(DOCTEST_WITH_TESTS OFF)
+set(DOCTEST_NO_INSTALL ON)
+set(DOCTEST_WITH_MAIN_IN_STATIC_LIB OFF)
+add_subdirectory(thirdparty/doctest)
 
-target_link_libraries(main
-    PRIVATE
-    argparse
-)
+add_library(vdm_rs_project_options INTERFACE)
 
-target_include_directories(main
-    PRIVATE
+target_include_directories(vdm_rs_project_options
+    INTERFACE
     include
 )
 
-target_compile_options(main PRIVATE
+target_compile_options(vdm_rs_project_options INTERFACE
     -Wall -Wextra -Wpedantic
     -Wshadow
     -Wconversion -Wsign-conversion
@@ -66,13 +64,39 @@ target_compile_options(main PRIVATE
     >
 )
 
-target_link_options(main PRIVATE
+target_link_options(vdm_rs_project_options INTERFACE
     $<$<CONFIG:Debug>:
         -fsanitize=address
     >
 )
 
+add_executable(main
+    src/main.cpp
+)
 
-#add_executable(test
-#    tests/test_linalg.cpp
-#)
+target_link_libraries(main
+    PRIVATE
+    argparse
+    vdm_rs_project_options
+)
+
+enable_testing()
+
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+)
+
+add_executable(unit_tests
+    ${TEST_SOURCES}
+)
+
+target_link_libraries(unit_tests
+    PRIVATE
+    doctest::doctest
+    vdm_rs_project_options
+)
+
+add_test(
+    NAME unit_tests
+    COMMAND unit_tests
+)
