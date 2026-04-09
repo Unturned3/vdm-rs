@@ -89,36 +89,40 @@ public:
 
         const std::size_t shard_size = validate_present_sizes_(shards, present);
 
-        std::vector<std::size_t> selected;
-        selected.reserve(k_);
-        for (std::size_t i = 0; i < n_ && selected.size() < k_; ++i) {
+        selected_scratch_.clear();
+        selected_scratch_.reserve(k_);
+        for (std::size_t i = 0; i < n_ && selected_scratch_.size() < k_; ++i) {
             if (present[i]) {
-                selected.push_back(i);
+                selected_scratch_.push_back(i);
             }
         }
 
-        Matrix<GF256> decode_matrix(k_, k_, GF256::zero());
+        decode_matrix_scratch_ = Matrix<GF256>(k_, k_, GF256::zero());
         for (std::size_t row = 0; row < k_; ++row) {
             for (std::size_t col = 0; col < k_; ++col) {
-                decode_matrix(row, col) = generator_matrix_(selected[row], col);
+                decode_matrix_scratch_(row, col)
+                    = generator_matrix_(selected_scratch_[row], col);
             }
         }
 
-        if (invert_mat(decode_matrix) < 0) {
+        if (invert_mat(decode_matrix_scratch_) < 0) {
             return false;
         }
 
-        std::vector<std::vector<std::uint8_t>> recovered_data(
-            k_, std::vector<std::uint8_t>(shard_size, std::uint8_t { 0 }));
+        recovered_data_scratch_.resize(k_);
+        for (auto& recovered_shard : recovered_data_scratch_) {
+            recovered_shard.assign(shard_size, std::uint8_t { 0 });
+        }
 
         for (std::size_t out_row = 0; out_row < k_; ++out_row) {
             for (std::size_t src_col = 0; src_col < k_; ++src_col) {
-                const auto coeff = decode_matrix(out_row, src_col).value();
+                const auto coeff = decode_matrix_scratch_(out_row, src_col).value();
                 if (coeff == 0) {
                     continue;
                 }
-                addmul_shard_(recovered_data[out_row].data(),
-                              shards[selected[src_col]].data, coeff, shard_size);
+                addmul_shard_(recovered_data_scratch_[out_row].data(),
+                              shards[selected_scratch_[src_col]].data, coeff,
+                              shard_size);
             }
         }
 
@@ -127,27 +131,27 @@ public:
                 throw std::invalid_argument(
                     "all data shard buffers must be allocated to reconstruct");
             }
-            std::copy(recovered_data[i].begin(), recovered_data[i].end(),
-                      shards[i].data);
+            std::copy(recovered_data_scratch_[i].begin(),
+                      recovered_data_scratch_[i].end(), shards[i].data);
         }
 
-        std::vector<Shard> data_views;
-        data_views.reserve(k_);
+        data_views_scratch_.clear();
+        data_views_scratch_.reserve(k_);
         for (std::size_t i = 0; i < k_; ++i) {
-            data_views.push_back(shards[i]);
+            data_views_scratch_.push_back(shards[i]);
         }
 
-        std::vector<Shard> parity_views;
-        parity_views.reserve(t_);
+        parity_views_scratch_.clear();
+        parity_views_scratch_.reserve(t_);
         for (std::size_t i = 0; i < t_; ++i) {
             if (shards[k_ + i].data == nullptr || shards[k_ + i].size != shard_size) {
                 throw std::invalid_argument(
                     "all parity shard buffers must be allocated to reconstruct");
             }
-            parity_views.push_back(shards[k_ + i]);
+            parity_views_scratch_.push_back(shards[k_ + i]);
         }
 
-        compute_parity(data_views, parity_views);
+        compute_parity(data_views_scratch_, parity_views_scratch_);
         return true;
     }
 
@@ -166,6 +170,11 @@ private:
     std::size_t n_;
     Matrix<GF256> generator_matrix_;
     Matrix<GF256> parity_matrix_;
+    mutable std::vector<std::size_t> selected_scratch_;
+    mutable Matrix<GF256> decode_matrix_scratch_ { 0, 0, GF256::zero() };
+    mutable std::vector<std::vector<std::uint8_t>> recovered_data_scratch_;
+    mutable std::vector<Shard> data_views_scratch_;
+    mutable std::vector<Shard> parity_views_scratch_;
 
     static void validate_params_(std::size_t k, std::size_t t)
     {
