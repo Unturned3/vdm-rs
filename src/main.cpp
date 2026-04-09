@@ -1,4 +1,5 @@
 #include "vdm_rs/reed_solomon.hpp"
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -125,6 +126,19 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
     return (numerator + denominator - 1) / denominator;
 }
 
+void print_codec_timing(std::string_view label, std::size_t payload_bytes,
+                        std::chrono::steady_clock::duration elapsed)
+{
+    const auto seconds = std::chrono::duration<double>(elapsed).count();
+    const auto mib = static_cast<double>(payload_bytes) / (1024.0 * 1024.0);
+    const auto mib_per_second = seconds > 0.0 ? mib / seconds : 0.0;
+    const auto milliseconds
+        = std::chrono::duration<double, std::milli>(elapsed).count();
+
+    std::println("{} codec time: {:.3f} ms ({:.2f} MiB/s over {:.2f} MiB payload)",
+                 label, milliseconds, mib_per_second, mib);
+}
+
 void encode_file(const fs::path& input_file, const fs::path& output_dir,
                  std::size_t k, std::size_t t)
 {
@@ -157,7 +171,9 @@ void encode_file(const fs::path& input_file, const fs::path& output_dir,
         parity_views.push_back(Shard { shard.data(), shard.size() });
     }
 
+    const auto encode_start = std::chrono::steady_clock::now();
     codec.compute_parity(data_views, parity_views);
+    const auto encode_elapsed = std::chrono::steady_clock::now() - encode_start;
 
     write_manifest(output_dir,
                    Manifest { .k = k,
@@ -174,6 +190,7 @@ void encode_file(const fs::path& input_file, const fs::path& output_dir,
 
     std::println("encoded '{}' into {} shards in '{}'",
                  input_file.string(), codec.total_shards(), output_dir.string());
+    print_codec_timing("encode", input.size(), encode_elapsed);
 }
 
 void decode_file(const fs::path& input_dir, const fs::path& output_file)
@@ -207,9 +224,11 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
         present[i] = true;
     }
 
+    const auto decode_start = std::chrono::steady_clock::now();
     if (!codec.reconstruct(shard_views, present)) {
         throw std::runtime_error("not enough shards present to reconstruct file");
     }
+    const auto decode_elapsed = std::chrono::steady_clock::now() - decode_start;
 
     std::vector<std::uint8_t> output;
     output.reserve(manifest.file_size);
@@ -223,6 +242,7 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
 
     write_file(output_file, output);
     std::println("decoded '{}' from '{}'", output_file.string(), input_dir.string());
+    print_codec_timing("decode", manifest.file_size, decode_elapsed);
 }
 
 void print_usage(std::string_view program_name)

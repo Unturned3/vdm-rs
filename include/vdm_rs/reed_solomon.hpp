@@ -57,14 +57,14 @@ public:
             std::fill_n(shard.data, shard.size, std::uint8_t { 0 });
         }
 
-        for (std::size_t parity_row = 0; parity_row < t_; ++parity_row) {
-            for (std::size_t data_col = 0; data_col < k_; ++data_col) {
-                const GF256 coeff = parity_matrix_(parity_row, data_col);
-                if (coeff.is_zero()) {
+        for (std::size_t data_col = 0; data_col < k_; ++data_col) {
+            const auto* src = data_shards[data_col].data;
+            for (std::size_t parity_row = 0; parity_row < t_; ++parity_row) {
+                const auto coeff = parity_matrix_(parity_row, data_col).value();
+                if (coeff == 0) {
                     continue;
                 }
-                addmul_shard_(parity_shards[parity_row].data,
-                              data_shards[data_col].data, coeff, shard_size);
+                addmul_shard_(parity_shards[parity_row].data, src, coeff, shard_size);
             }
         }
     }
@@ -113,8 +113,8 @@ public:
 
         for (std::size_t out_row = 0; out_row < k_; ++out_row) {
             for (std::size_t src_col = 0; src_col < k_; ++src_col) {
-                const GF256 coeff = decode_matrix(out_row, src_col);
-                if (coeff.is_zero()) {
+                const auto coeff = decode_matrix(out_row, src_col).value();
+                if (coeff == 0) {
                     continue;
                 }
                 addmul_shard_(recovered_data[out_row].data(),
@@ -286,11 +286,18 @@ private:
         }
     }
 
-    static void addmul_shard_(std::uint8_t* dst, const std::uint8_t* src, GF256 coeff,
+    static void addmul_shard_(std::uint8_t* dst, const std::uint8_t* src,
+                              std::uint8_t coeff,
                               std::size_t shard_size)
     {
+        if (coeff == 0) {
+            return;
+        }
+
+        const auto& mul_table = GF256::mul_table();
+        const auto& coeff_row = mul_table[coeff];
         for (std::size_t i = 0; i < shard_size; ++i) {
-            dst[i] ^= (coeff * GF256 { src[i] }).value();
+            dst[i] ^= coeff_row[src[i]];
         }
     }
 };
