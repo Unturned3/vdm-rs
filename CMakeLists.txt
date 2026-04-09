@@ -41,6 +41,13 @@ target_include_directories(vdm_rs_project_options
     include
 )
 
+add_library(vdm_rs INTERFACE)
+
+target_link_libraries(vdm_rs
+    INTERFACE
+    vdm_rs_project_options
+)
+
 target_compile_options(vdm_rs_project_options INTERFACE
     -Wall -Wextra -Wpedantic
     -Wshadow
@@ -77,7 +84,7 @@ add_executable(main
 target_link_libraries(main
     PRIVATE
     argparse
-    vdm_rs_project_options
+    vdm_rs
 )
 
 enable_testing()
@@ -93,7 +100,7 @@ add_executable(unit_tests
 target_link_libraries(unit_tests
     PRIVATE
     doctest::doctest
-    vdm_rs_project_options
+    vdm_rs
 )
 
 add_test(

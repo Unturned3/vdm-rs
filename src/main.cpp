@@ -1,7 +1,7 @@
 #include "argparse/argparse.hpp"
-#include "gf256.hpp"
-#include "linalg.hpp"
-#include "matrix.hpp"
+#include "vdm_rs/gf256.hpp"
+#include "vdm_rs/linalg.hpp"
+#include "vdm_rs/matrix.hpp"
 #include <iostream>
 #include <print>
 #include <string>

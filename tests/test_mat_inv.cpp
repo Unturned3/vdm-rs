@@ -1,6 +1,6 @@
-#include "gf256.hpp"
-#include "linalg.hpp"
-#include "matrix.hpp"
+#include "vdm_rs/gf256.hpp"
+#include "vdm_rs/linalg.hpp"
+#include "vdm_rs/matrix.hpp"
 #include "test_support.hpp"
 #include <doctest/doctest.h>
 

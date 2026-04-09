@@ -1,7 +1,7 @@
 #pragma once
 
-#include "gf256.hpp"
-#include "matrix.hpp"
+#include "vdm_rs/gf256.hpp"
+#include "vdm_rs/matrix.hpp"
 #include <algorithm>
 #include <cassert>
 #include <concepts>

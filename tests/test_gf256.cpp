@@ -1,4 +1,4 @@
-#include "gf256.hpp"
+#include "vdm_rs/gf256.hpp"
 #include <doctest/doctest.h>
 
 TEST_CASE("GF256 multiplication")
