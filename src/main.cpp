@@ -1,49 +1,269 @@
-#include "argparse/argparse.hpp"
-#include "vdm_rs/gf256.hpp"
-#include "vdm_rs/linalg.hpp"
-#include "vdm_rs/matrix.hpp"
+#include "vdm_rs/reed_solomon.hpp"
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <iostream>
-#include <print>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <vector>
 
-// NOLINTNEXTLINE
-// int main(int argc, char* argv[])
-int main()
+namespace fs = std::filesystem;
+
+namespace {
+
+struct Manifest
 {
-    argparse::ArgumentParser parser { };
-    parser.add_argument("host").help("IP address");
-    parser.add_argument("port").help("Port number");
-    parser.add_argument("--resize").help("Resize image to WxH");
+    std::size_t k = 0;
+    std::size_t t = 0;
+    std::size_t shard_size = 0;
+    std::size_t file_size = 0;
+};
 
-    // try {
-    // parser.parse_args(argc, argv);
-    // } catch (const std::runtime_error& err) {
-    // std::println(stderr, "{}", err.what());
-    // std::cerr << parser;
-    // return 1;
-    // }
-    //
-    // auto host = parser.get<std::string>("host");
-    // auto port = parser.get<std::string>("port");
-    //
-    // std::println("Host: {}, Port: {}", host, port);
+[[nodiscard]] auto slurp_file(const fs::path& path) -> std::vector<std::uint8_t>
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error(std::format("failed to open input file '{}'",
+                                             path.string()));
+    }
 
-    // clang-format off
-    Matrix<int> a(2, 3, {
-        1, 2, 3,
-        4, 5, 6,
-    });
-    Matrix<int> b(3, 2, {
-        7, 8,
-        9, 10,
-        11, 12,
-    });
-    // clang-format on
+    input.seekg(0, std::ios::end);
+    const auto end_pos = input.tellg();
+    if (end_pos < 0) {
+        throw std::runtime_error(std::format("failed to stat input file '{}'",
+                                             path.string()));
+    }
 
-    auto c = matmul(a, b);
-    std::println("c:\n{}", to_string(c));
+    const auto file_size = static_cast<std::size_t>(end_pos);
+    input.seekg(0, std::ios::beg);
 
-    auto k = GF256 { 3 };
-    std::println("k: {}", k);
-    return 0;
+    std::vector<std::uint8_t> data(file_size);
+    if (!data.empty()) {
+        input.read(reinterpret_cast<char*>(data.data()),
+                   static_cast<std::streamsize>(data.size()));
+        if (!input) {
+            throw std::runtime_error(std::format("failed to read input file '{}'",
+                                                 path.string()));
+        }
+    }
+
+    return data;
+}
+
+void write_file(const fs::path& path, const std::vector<std::uint8_t>& data)
+{
+    std::ofstream output(path, std::ios::binary);
+    if (!output) {
+        throw std::runtime_error(std::format("failed to open output file '{}'",
+                                             path.string()));
+    }
+
+    if (!data.empty()) {
+        output.write(reinterpret_cast<const char*>(data.data()),
+                     static_cast<std::streamsize>(data.size()));
+        if (!output) {
+            throw std::runtime_error(std::format("failed to write output file '{}'",
+                                                 path.string()));
+        }
+    }
+}
+
+void write_manifest(const fs::path& output_dir, const Manifest& manifest)
+{
+    std::ofstream output(output_dir / "manifest.txt");
+    if (!output) {
+        throw std::runtime_error(std::format("failed to write manifest in '{}'",
+                                             output_dir.string()));
+    }
+
+    output << "k " << manifest.k << '\n';
+    output << "t " << manifest.t << '\n';
+    output << "shard_size " << manifest.shard_size << '\n';
+    output << "file_size " << manifest.file_size << '\n';
+}
+
+[[nodiscard]] auto read_manifest(const fs::path& input_dir) -> Manifest
+{
+    std::ifstream input(input_dir / "manifest.txt");
+    if (!input) {
+        throw std::runtime_error(
+            std::format("failed to open manifest in '{}'", input_dir.string()));
+    }
+
+    Manifest manifest;
+    std::string key;
+    while (input >> key) {
+        if (key == "k") {
+            input >> manifest.k;
+        } else if (key == "t") {
+            input >> manifest.t;
+        } else if (key == "shard_size") {
+            input >> manifest.shard_size;
+        } else if (key == "file_size") {
+            input >> manifest.file_size;
+        } else {
+            throw std::runtime_error(std::format("unknown manifest key '{}'", key));
+        }
+    }
+
+    if (manifest.k == 0 || manifest.t == 0 || manifest.shard_size == 0) {
+        throw std::runtime_error("manifest is missing required fields");
+    }
+
+    return manifest;
+}
+
+[[nodiscard]] auto shard_filename(std::size_t index) -> std::string
+{
+    return std::format("shard_{:03}.bin", index);
+}
+
+[[nodiscard]] auto ceil_div(std::size_t numerator, std::size_t denominator)
+    -> std::size_t
+{
+    return (numerator + denominator - 1) / denominator;
+}
+
+void encode_file(const fs::path& input_file, const fs::path& output_dir,
+                 std::size_t k, std::size_t t)
+{
+    const auto codec = ReedSolomonCodec::create(k, t);
+    const auto input = slurp_file(input_file);
+    const auto shard_size = std::max<std::size_t>(1, ceil_div(input.size(), k));
+
+    fs::create_directories(output_dir);
+
+    std::vector<std::vector<std::uint8_t>> data_shards(
+        k, std::vector<std::uint8_t>(shard_size, 0));
+    std::vector<std::vector<std::uint8_t>> parity_shards(
+        t, std::vector<std::uint8_t>(shard_size, 0));
+
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        const auto shard_index = i / shard_size;
+        const auto offset = i % shard_size;
+        data_shards[shard_index][offset] = input[i];
+    }
+
+    std::vector<Shard> data_views;
+    data_views.reserve(k);
+    for (auto& shard : data_shards) {
+        data_views.push_back(Shard { shard.data(), shard.size() });
+    }
+
+    std::vector<Shard> parity_views;
+    parity_views.reserve(t);
+    for (auto& shard : parity_shards) {
+        parity_views.push_back(Shard { shard.data(), shard.size() });
+    }
+
+    codec.compute_parity(data_views, parity_views);
+
+    write_manifest(output_dir,
+                   Manifest { .k = k,
+                              .t = t,
+                              .shard_size = shard_size,
+                              .file_size = input.size() });
+
+    for (std::size_t i = 0; i < k; ++i) {
+        write_file(output_dir / shard_filename(i), data_shards[i]);
+    }
+    for (std::size_t i = 0; i < t; ++i) {
+        write_file(output_dir / shard_filename(k + i), parity_shards[i]);
+    }
+
+    std::println("encoded '{}' into {} shards in '{}'",
+                 input_file.string(), codec.total_shards(), output_dir.string());
+}
+
+void decode_file(const fs::path& input_dir, const fs::path& output_file)
+{
+    const auto manifest = read_manifest(input_dir);
+    const auto codec = ReedSolomonCodec::create(manifest.k, manifest.t);
+    const auto n = codec.total_shards();
+
+    std::vector<std::vector<std::uint8_t>> shard_storage(
+        n, std::vector<std::uint8_t>(manifest.shard_size, 0));
+    std::vector<Shard> shard_views;
+    shard_views.reserve(n);
+    std::vector<bool> present(n, false);
+
+    for (std::size_t i = 0; i < n; ++i) {
+        shard_views.push_back(
+            Shard { shard_storage[i].data(), shard_storage[i].size() });
+
+        const auto path = input_dir / shard_filename(i);
+        if (!fs::exists(path)) {
+            continue;
+        }
+
+        auto bytes = slurp_file(path);
+        if (bytes.size() != manifest.shard_size) {
+            throw std::runtime_error(std::format(
+                "shard '{}' has size {}, expected {}", path.string(),
+                bytes.size(), manifest.shard_size));
+        }
+        std::copy(bytes.begin(), bytes.end(), shard_storage[i].begin());
+        present[i] = true;
+    }
+
+    if (!codec.reconstruct(shard_views, present)) {
+        throw std::runtime_error("not enough shards present to reconstruct file");
+    }
+
+    std::vector<std::uint8_t> output;
+    output.reserve(manifest.file_size);
+    for (std::size_t i = 0; i < manifest.k && output.size() < manifest.file_size; ++i) {
+        const auto bytes_to_copy = std::min(manifest.shard_size,
+                                            manifest.file_size - output.size());
+        output.insert(output.end(), shard_storage[i].begin(),
+                      shard_storage[i].begin()
+                          + static_cast<std::ptrdiff_t>(bytes_to_copy));
+    }
+
+    write_file(output_file, output);
+    std::println("decoded '{}' from '{}'", output_file.string(), input_dir.string());
+}
+
+void print_usage(std::string_view program_name)
+{
+    std::println("usage:");
+    std::println("  {} encode <input-file> <output-dir> <k> <t>", program_name);
+    std::println("  {} decode <input-dir> <output-file>", program_name);
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
+{
+    try {
+        if (argc < 2) {
+            print_usage(argv[0]);
+            return 1;
+        }
+
+        const std::string_view command = argv[1];
+        if (command == "encode") {
+            if (argc != 6) {
+                print_usage(argv[0]);
+                return 1;
+            }
+            encode_file(argv[2], argv[3], std::stoull(argv[4]), std::stoull(argv[5]));
+            return 0;
+        }
+        if (command == "decode") {
+            if (argc != 4) {
+                print_usage(argv[0]);
+                return 1;
+            }
+            decode_file(argv[2], argv[3]);
+            return 0;
+        }
+
+        print_usage(argv[0]);
+        return 1;
+    } catch (const std::exception& ex) {
+        std::println(stderr, "error: {}", ex.what());
+        return 1;
+    }
 }
