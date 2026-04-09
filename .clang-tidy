@@ -8,6 +8,9 @@ Checks: >
   portability-*,
   cppcoreguidelines-*,
 
+  -modernize-use-designated-initializers,
+  -modernize-use-ranges,
+  -modernize-return-braced-init-list,
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-pro-bounds-constant-array-index,
   -modernize-use-trailing-return-type,
