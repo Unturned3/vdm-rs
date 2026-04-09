@@ -1,14 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cassert>
 #include <iomanip>
 #include <print>
 #include <sstream>
 #include <string>
 #include <vector>
-
-namespace matrix
-{
 
 template <class T>
 class Matrix
@@ -62,34 +60,6 @@ private:
 };
 
 template <class T>
-Matrix<T> matmul(Matrix<T>& a, Matrix<T>& b)
-{
-    Matrix<T> c(a.rows(), b.cols(), T { });
-    for (std::size_t i = 0; i < a.rows(); i++) {
-        for (std::size_t k = 0; k < a.cols(); k++) {
-            T aik = a(i, k);
-            for (std::size_t j = 0; j < b.cols(); j++) {
-                c(i, j) += aik * b(k, j);
-            }
-        }
-    }
-    return c;
-}
-
-template <class T>
-void matmul(Matrix<T>& a, Matrix<T>& b, Matrix<T>& c)
-{
-    for (std::size_t i = 0; i < a.rows(); i++) {
-        for (std::size_t k = 0; k < a.cols(); k++) {
-            T aik = a(i, k);
-            for (std::size_t j = 0; j < b.cols(); j++) {
-                c(i, j) += aik * b(k, j);
-            }
-        }
-    }
-}
-
-template <class T>
 std::string to_string(const Matrix<T>& m, int width = 4)
 {
     std::ostringstream oss;
@@ -103,5 +73,3 @@ std::string to_string(const Matrix<T>& m, int width = 4)
 
     return oss.str();
 }
-
-} // namespace matrix

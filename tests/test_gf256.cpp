@@ -1,8 +1,9 @@
 #include "gf256.hpp"
 #include <doctest/doctest.h>
 
-TEST_CASE("GF256 constructor initializes correctly")
+TEST_CASE("GF256 multiplication")
 {
-    GF256 gf256(3);
-    CHECK(gf256.value() == 3);
+    GF256 a(35), b(36);
+    GF256 result = a * b;
+    CHECK(result == GF256(128));
 }
