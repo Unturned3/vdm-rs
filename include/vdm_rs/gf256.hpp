@@ -6,6 +6,9 @@
 #include <format>
 #include <ostream>
 
+/*
+A lightweight class representing elements of the finite field GF(2^8).
+ */
 class GF256
 {
 public:
@@ -18,14 +21,14 @@ public:
     {
     }
 
-    static const auto& mul_table()
+    static const auto& mul_table() // Class-wide multiplication lookup table
     {
         // Initialized on first use
         static const auto table = make_mul_table();
         return table;
     }
 
-    static const auto& inv_table()
+    static const auto& inv_table() // Class-wide multiplicative inverse lookup table
     {
         // Initialized on first use
         static const auto table = make_inv_table();
@@ -42,6 +45,7 @@ public:
 
     friend constexpr bool operator==(GF256, GF256) = default;
 
+    // Additions and subtractions are the same in GF256, implemented as XOR.
     friend constexpr GF256 operator+(GF256 a, GF256 b)
     {
         return GF256 { static_cast<storage_type>(a.value_ ^ b.value_) };
@@ -65,7 +69,7 @@ public:
 
     [[nodiscard]] constexpr GF256 operator-() const
     {
-        // In characteristic 2, additive inverse is self.
+        // In GF256, additive inverse is self.
         return *this;
     }
 
@@ -103,6 +107,10 @@ public:
 private:
     storage_type value_ = 0;
 
+    // Rjindael (AES) irreducible polynomial: x^8 + x^4 + x^3 + x + 1
+    static constexpr storage_type irreducible_polynomial_low_ = 0x1B;
+
+    // Synthetic multiplication of GF256 elements, modulo the irreducible polynomial.
     static storage_type poly_mul(storage_type a, storage_type b)
     {
         storage_type result = 0;
@@ -150,12 +158,9 @@ private:
         }
         return table;
     }
-
-    // For AES field x^8 + x^4 + x^3 + x + 1, reduction byte is 0x1B.
-    static constexpr storage_type irreducible_polynomial_low_ = 0x1B;
 };
 
-// Implement functions for printing GF256 values
+// For printing GF256 values
 
 inline std::ostream& operator<<(std::ostream& os, const GF256& x)
 {
