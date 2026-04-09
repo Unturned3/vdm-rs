@@ -3,6 +3,7 @@
 #include "gf256.hpp"
 #include "matrix.hpp"
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -12,12 +13,13 @@
 #include <vector>
 
 template <class T>
-Matrix<T> matmul(Matrix<T>& a, Matrix<T>& b)
+Matrix<T> matmul(const Matrix<T>& a, const Matrix<T>& b)
 {
+    assert(a.cols() == b.rows());
     Matrix<T> c(a.rows(), b.cols(), T { });
     for (std::size_t i = 0; i < a.rows(); i++) {
         for (std::size_t k = 0; k < a.cols(); k++) {
-            T aik = a(i, k);
+            const T aik = a(i, k);
             for (std::size_t j = 0; j < b.cols(); j++) {
                 c(i, j) += aik * b(k, j);
             }
@@ -26,12 +28,23 @@ Matrix<T> matmul(Matrix<T>& a, Matrix<T>& b)
     return c;
 }
 
+// TODO: Add a variant that does not zero the output matrix before multiplication?
 template <class T>
-void matmul(Matrix<T>& a, Matrix<T>& b, Matrix<T>& c)
+void matmul(const Matrix<T>& a, const Matrix<T>& b, Matrix<T>& c)
 {
+    assert(a.cols() == b.rows());
+    assert(c.rows() == a.rows());
+    assert(c.cols() == b.cols());
+
+    for (std::size_t i = 0; i < c.rows(); ++i) {
+        for (std::size_t j = 0; j < c.cols(); ++j) {
+            c(i, j) = T { };
+        }
+    }
+
     for (std::size_t i = 0; i < a.rows(); i++) {
         for (std::size_t k = 0; k < a.cols(); k++) {
-            T aik = a(i, k);
+            const T aik = a(i, k);
             for (std::size_t j = 0; j < b.cols(); j++) {
                 c(i, j) += aik * b(k, j);
             }
@@ -45,14 +58,15 @@ void matmul(Matrix<T>& a, Matrix<T>& b, Matrix<T>& c)
 inline int invert_mat(Matrix<GF256>& m)
 {
     assert(m.rows() == m.cols());
-    size_t n = m.rows();
+    const std::size_t n = m.rows();
+    assert(n <= 256);
 
-    std::array<size_t, 256> ar { };
-    for (size_t i = 0; i < n; i++)
+    std::array<std::size_t, 256> ar { };
+    for (std::size_t i = 0; i < n; i++)
         ar[i] = i;
 
-    for (size_t i = 0; i < n; i++) {
-        size_t j = 0;
+    for (std::size_t i = 0; i < n; i++) {
+        std::size_t j = 0;
 
         for (j = i; j < n; j++)
             if (!m(j, i).is_zero())
@@ -63,29 +77,29 @@ inline int invert_mat(Matrix<GF256>& m)
         }
         if (i != j) { // Perform row swap
             std::swap(ar[i], ar[j]);
-            for (size_t k = 0; k < n; k++)
+            for (std::size_t k = 0; k < n; k++)
                 std::swap(m(i, k), m(j, k));
         }
-        GF256 inv_piv = m(i, i).inverse();
-        for (size_t k = 0; k < n; k++)
+        const GF256 inv_piv = m(i, i).inverse();
+        for (std::size_t k = 0; k < n; k++)
             m(i, k) *= inv_piv;
         m(i, i) = inv_piv;
 
         for (j = 0; j < n; j++) {
             if (j == i)
                 continue;
-            GF256 scale = -m(j, i);
+            const GF256 scale = -m(j, i);
             m(j, i) = GF256 { 0 };
-            for (size_t k = 0; k < n; k++)
+            for (std::size_t k = 0; k < n; k++)
                 m(j, k) += scale * m(i, k);
         }
     }
 
     int swapCnt = 0;
-    for (size_t i = 0; i < n; i++) {
+    for (std::size_t i = 0; i < n; i++) {
         while (ar[i] != i) {
             swapCnt++;
-            for (size_t j = 0; j < n; j++) // Swap columns i, ar[i]
+            for (std::size_t j = 0; j < n; j++) // Swap columns i, ar[i]
                 std::swap(m(j, ar[i]), m(j, i));
             std::swap(ar[ar[i]], ar[i]);
         }

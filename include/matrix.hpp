@@ -38,10 +38,17 @@ public:
         assert(data_.size() == rows_ * cols_);
     }
 
-    T& operator()(std::size_t r, std::size_t c) { return data_[r * cols_ + c]; }
+    T& operator()(std::size_t r, std::size_t c)
+    {
+        assert(r < rows_);
+        assert(c < cols_);
+        return data_[r * cols_ + c];
+    }
 
     const T& operator()(std::size_t r, std::size_t c) const
     {
+        assert(r < rows_);
+        assert(c < cols_);
         return data_[r * cols_ + c];
     }
 
@@ -58,6 +65,16 @@ private:
     std::size_t cols_;
     std::vector<T> data_ { };
 };
+
+template <class T>
+Matrix<T> make_identity(std::size_t n)
+{
+    Matrix<T> identity(n, n, T { });
+    for (std::size_t i = 0; i < n; ++i) {
+        identity(i, i) = T { 1 };
+    }
+    return identity;
+}
 
 template <class T>
 std::string to_string(const Matrix<T>& m, int width = 4)

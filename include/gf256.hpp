@@ -1,12 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <array>
 #include <cstdint>
 #include <format>
-#include <mutex>
 #include <ostream>
-#include <stdexcept>
-#include <thread>
 
 class GF256
 {
@@ -59,7 +57,11 @@ public:
         return GF256 { mul_table()[a.value_][b.value_] };
     }
 
-    friend GF256 operator/(GF256 a, GF256 b) { return a * b.inverse(); }
+    friend GF256 operator/(GF256 a, GF256 b)
+    {
+        assert(!b.is_zero());
+        return a * b.inverse();
+    }
 
     [[nodiscard]] constexpr GF256 operator-() const
     {
@@ -67,7 +69,11 @@ public:
         return *this;
     }
 
-    [[nodiscard]] GF256 inverse() const { return GF256 { inv_table()[value_] }; }
+    [[nodiscard]] GF256 inverse() const
+    {
+        assert(!is_zero());
+        return GF256 { inv_table()[value_] };
+    }
 
     GF256& operator+=(GF256 rhs)
     {
@@ -89,6 +95,7 @@ public:
 
     GF256& operator/=(GF256 rhs)
     {
+        assert(!rhs.is_zero());
         *this *= rhs.inverse();
         return *this;
     }
