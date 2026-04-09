@@ -1,6 +1,6 @@
+#include "test_support.hpp"
 #include "vdm_rs/linalg.hpp"
 #include "vdm_rs/matrix.hpp"
-#include "test_support.hpp"
 #include <doctest/doctest.h>
 
 TEST_CASE("matmul multiplies a 2x3 and 3x2 matrix")
