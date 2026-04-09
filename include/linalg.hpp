@@ -42,7 +42,7 @@ void matmul(Matrix<T>& a, Matrix<T>& b, Matrix<T>& c)
 // Inverts matrix in-place.
 // Returns -1 if the matrix is singular. Otherwise, returns the number of row swaps
 // performed.
-int invert_mat(Matrix<GF256>& m)
+inline int invert_mat(Matrix<GF256>& m)
 {
     assert(m.rows() == m.cols());
     size_t n = m.rows();
