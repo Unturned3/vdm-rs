@@ -2,6 +2,10 @@
 
 Vandermonde matrix-based Reed-Solomon forward error correction library
 
+Read `plan.md` for what's left to implement.
+
+See [piazza](https://piazza.com/class/mjzz4wzsihz3kg/post/86) for grading criteria.
+
 
 ## Environment Setup
 
