@@ -5,6 +5,11 @@ Vandermonde matrix-based Reed-Solomon forward error correction library
 
 ## Environment Setup
 
+This repo contains git submodules. Clone using:
+```bash
+git clone --recurse-submodules <repo_url>
+```
+
 Do __NOT__ install the C/C++ vscode extension from Microsoft (`ms-vscode.cpptools`).
 
 Install the `clangd` extension instead (`llvm-vs-code-extensions.vscode-clangd`).
