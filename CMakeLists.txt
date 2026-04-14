@@ -87,6 +87,36 @@ target_link_libraries(main
     vdm_rs
 )
 
+add_executable(tx
+    src/tx.cpp
+)
+
+target_link_libraries(tx
+    PRIVATE
+    argparse
+    vdm_rs
+)
+
+add_executable(rx
+    src/rx.cpp
+)
+
+target_link_libraries(rx
+    PRIVATE
+    argparse
+    vdm_rs
+)
+
+add_executable(link_sim
+    src/link_sim.cpp
+)
+
+target_link_libraries(link_sim
+    PRIVATE
+    argparse
+    vdm_rs
+)
+
 enable_testing()
 
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS

@@ -1,9 +1,10 @@
 #include "vdm_rs/reed_solomon.hpp"
 #include <chrono>
+#include <iomanip>
 #include <filesystem>
-#include <format>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -21,19 +22,35 @@ struct Manifest
     std::size_t file_size = 0;
 };
 
+[[nodiscard]] auto quoted(std::string_view text) -> std::string
+{
+    return "'" + std::string(text) + "'";
+}
+
+[[nodiscard]] auto make_error(std::string_view message, std::string_view detail)
+    -> std::runtime_error
+{
+    return std::runtime_error(std::string(message) + " " + quoted(detail));
+}
+
+[[nodiscard]] auto shard_filename(std::size_t index) -> std::string
+{
+    std::ostringstream oss;
+    oss << "shard_" << std::setw(3) << std::setfill('0') << index << ".bin";
+    return oss.str();
+}
+
 [[nodiscard]] auto slurp_file(const fs::path& path) -> std::vector<std::uint8_t>
 {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
-        throw std::runtime_error(std::format("failed to open input file '{}'",
-                                             path.string()));
+        throw make_error("failed to open input file", path.string());
     }
 
     input.seekg(0, std::ios::end);
     const auto end_pos = input.tellg();
     if (end_pos < 0) {
-        throw std::runtime_error(std::format("failed to stat input file '{}'",
-                                             path.string()));
+        throw make_error("failed to stat input file", path.string());
     }
 
     const auto file_size = static_cast<std::size_t>(end_pos);
@@ -44,8 +61,7 @@ struct Manifest
         input.read(reinterpret_cast<char*>(data.data()),
                    static_cast<std::streamsize>(data.size()));
         if (!input) {
-            throw std::runtime_error(std::format("failed to read input file '{}'",
-                                                 path.string()));
+            throw make_error("failed to read input file", path.string());
         }
     }
 
@@ -56,16 +72,14 @@ void write_file(const fs::path& path, const std::vector<std::uint8_t>& data)
 {
     std::ofstream output(path, std::ios::binary);
     if (!output) {
-        throw std::runtime_error(std::format("failed to open output file '{}'",
-                                             path.string()));
+        throw make_error("failed to open output file", path.string());
     }
 
     if (!data.empty()) {
         output.write(reinterpret_cast<const char*>(data.data()),
                      static_cast<std::streamsize>(data.size()));
         if (!output) {
-            throw std::runtime_error(std::format("failed to write output file '{}'",
-                                                 path.string()));
+            throw make_error("failed to write output file", path.string());
         }
     }
 }
@@ -74,8 +88,7 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
 {
     std::ofstream output(output_dir / "manifest.txt");
     if (!output) {
-        throw std::runtime_error(std::format("failed to write manifest in '{}'",
-                                             output_dir.string()));
+        throw make_error("failed to write manifest in", output_dir.string());
     }
 
     output << "k " << manifest.k << '\n';
@@ -88,8 +101,7 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
 {
     std::ifstream input(input_dir / "manifest.txt");
     if (!input) {
-        throw std::runtime_error(
-            std::format("failed to open manifest in '{}'", input_dir.string()));
+        throw make_error("failed to open manifest in", input_dir.string());
     }
 
     Manifest manifest;
@@ -104,7 +116,7 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
         } else if (key == "file_size") {
             input >> manifest.file_size;
         } else {
-            throw std::runtime_error(std::format("unknown manifest key '{}'", key));
+            throw make_error("unknown manifest key", key);
         }
     }
 
@@ -113,11 +125,6 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
     }
 
     return manifest;
-}
-
-[[nodiscard]] auto shard_filename(std::size_t index) -> std::string
-{
-    return std::format("shard_{:03}.bin", index);
 }
 
 [[nodiscard]] auto ceil_div(std::size_t numerator, std::size_t denominator)
@@ -135,8 +142,9 @@ void print_codec_timing(std::string_view label, std::size_t payload_bytes,
     const auto milliseconds
         = std::chrono::duration<double, std::milli>(elapsed).count();
 
-    std::println("{} codec time: {:.3f} ms ({:.2f} MiB/s over {:.2f} MiB payload)",
-                 label, milliseconds, mib_per_second, mib);
+    std::cout << label << " codec time: " << std::fixed << std::setprecision(3)
+              << milliseconds << " ms (" << std::setprecision(2) << mib_per_second
+              << " MiB/s over " << mib << " MiB payload)\n";
 }
 
 void encode_file(const fs::path& input_file, const fs::path& output_dir,
@@ -188,8 +196,9 @@ void encode_file(const fs::path& input_file, const fs::path& output_dir,
         write_file(output_dir / shard_filename(k + i), parity_shards[i]);
     }
 
-    std::println("encoded '{}' into {} shards in '{}'",
-                 input_file.string(), codec.total_shards(), output_dir.string());
+    std::cout << "encoded " << quoted(input_file.string()) << " into "
+              << codec.total_shards() << " shards in "
+              << quoted(output_dir.string()) << '\n';
     print_codec_timing("encode", input.size(), encode_elapsed);
 }
 
@@ -216,9 +225,10 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
 
         auto bytes = slurp_file(path);
         if (bytes.size() != manifest.shard_size) {
-            throw std::runtime_error(std::format(
-                "shard '{}' has size {}, expected {}", path.string(),
-                bytes.size(), manifest.shard_size));
+            std::ostringstream oss;
+            oss << "shard " << quoted(path.string()) << " has size "
+                << bytes.size() << ", expected " << manifest.shard_size;
+            throw std::runtime_error(oss.str());
         }
         std::copy(bytes.begin(), bytes.end(), shard_storage[i].begin());
         present[i] = true;
@@ -241,15 +251,16 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
     }
 
     write_file(output_file, output);
-    std::println("decoded '{}' from '{}'", output_file.string(), input_dir.string());
+    std::cout << "decoded " << quoted(output_file.string()) << " from "
+              << quoted(input_dir.string()) << '\n';
     print_codec_timing("decode", manifest.file_size, decode_elapsed);
 }
 
 void print_usage(std::string_view program_name)
 {
-    std::println("usage:");
-    std::println("  {} encode <input-file> <output-dir> <k> <t>", program_name);
-    std::println("  {} decode <input-dir> <output-file>", program_name);
+    std::cout << "usage:\n";
+    std::cout << "  " << program_name << " encode <input-file> <output-dir> <k> <t>\n";
+    std::cout << "  " << program_name << " decode <input-dir> <output-file>\n";
 }
 
 } // namespace
@@ -283,7 +294,7 @@ int main(int argc, char* argv[])
         print_usage(argv[0]);
         return 1;
     } catch (const std::exception& ex) {
-        std::println(stderr, "error: {}", ex.what());
+        std::cerr << "error: " << ex.what() << '\n';
         return 1;
     }
 }
