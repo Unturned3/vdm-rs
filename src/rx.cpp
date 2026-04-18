@@ -42,9 +42,13 @@ struct Options
 struct Stats
 {
     std::uint64_t packets_received = 0;
+    std::uint64_t invalid_packets = 0;
     std::uint64_t duplicate_shards = 0;
+    std::uint64_t late_shards = 0;
+    std::uint64_t corrupt_data_shards = 0;
     std::uint64_t reconstructed_stripes = 0;
     std::uint64_t lost_stripes = 0;
+    std::uint64_t eof_markers_received = 0;
     std::uint64_t bytes_written = 0;
     std::uint64_t latency_samples = 0;
     std::uint64_t latency_total_ns = 0;
@@ -226,17 +230,50 @@ void log_stats(const Stats& stats, std::size_t inflight, Clock::time_point start
     std::cerr << std::fixed << std::setprecision(2)
               << "rx stats: elapsed_s=" << elapsed
               << " packets_received=" << stats.packets_received
+              << " invalid_packets=" << stats.invalid_packets
               << " duplicate_shards=" << stats.duplicate_shards
               << " duplicate_pct="
               << percent(stats.duplicate_shards, stats.packets_received)
+              << " late_shards=" << stats.late_shards
+              << " corrupt_data_shards=" << stats.corrupt_data_shards
               << " reconstructed_stripes=" << stats.reconstructed_stripes
               << " lost_stripes=" << stats.lost_stripes
               << " stripe_loss_pct=" << percent(stats.lost_stripes, completed)
+              << " eof_markers_received=" << stats.eof_markers_received
               << " bytes_written=" << stats.bytes_written
               << " goodput=" << stream_demo::describe_rate_bps(goodput)
               << " avg_latency_ms=" << avg_latency_ms
               << " max_latency_ms=" << max_latency_ms
               << " inflight=" << inflight << '\n';
+}
+
+[[nodiscard]] auto validate_data_shard(std::span<const std::uint8_t> shard,
+                                       std::size_t shard_payload_size)
+    -> std::optional<stream_demo::DataShardHeader>
+{
+    if (shard.size() != shard_payload_size) {
+        return std::nullopt;
+    }
+
+    const auto data_header = stream_demo::parse_data_shard_header(
+        shard.first(stream_demo::data_shard_header_size));
+    if (!data_header.has_value()) {
+        return std::nullopt;
+    }
+
+    const std::size_t data_capacity
+        = shard_payload_size - stream_demo::data_shard_header_size;
+    if (data_header->data_length > data_capacity) {
+        return std::nullopt;
+    }
+
+    const auto payload = shard.subspan(stream_demo::data_shard_header_size,
+                                       data_header->data_length);
+    if (stream_demo::compute_crc32(payload) != data_header->payload_crc32) {
+        return std::nullopt;
+    }
+
+    return data_header;
 }
 
 [[nodiscard]] auto maybe_missing_stripe_timed_out(
@@ -256,34 +293,34 @@ void log_stats(const Stats& stats, std::size_t inflight, Clock::time_point start
 }
 
 [[nodiscard]] auto emit_stripe(StripeState& stripe, std::size_t k,
-                               std::size_t shard_payload_size, Stats& stats) -> bool
+                               std::size_t shard_payload_size, Stats& stats)
+    -> std::optional<bool>
 {
-    const std::size_t data_capacity
-        = shard_payload_size - stream_demo::data_shard_header_size;
     bool saw_final = stripe.final_stripe;
+    std::vector<stream_demo::DataShardHeader> headers;
+    headers.reserve(k);
 
     for (std::size_t shard_index = 0; shard_index < k; ++shard_index) {
         const auto shard = std::span<const std::uint8_t>(stripe.storage[shard_index]);
-        const auto data_header = stream_demo::parse_data_shard_header(
-            shard.first(stream_demo::data_shard_header_size));
+        const auto data_header = validate_data_shard(shard, shard_payload_size);
         if (!data_header.has_value()) {
-            throw std::runtime_error("reconstructed data shard missing header");
-        }
-        if (data_header->data_length > data_capacity) {
-            throw std::runtime_error("reconstructed data shard length exceeds capacity");
+            return std::nullopt;
         }
         if ((data_header->flags & stream_demo::data_flag_final_stripe) != 0U) {
             saw_final = true;
         }
+        headers.push_back(*data_header);
+    }
 
+    for (std::size_t shard_index = 0; shard_index < k; ++shard_index) {
         const auto* payload_begin = reinterpret_cast<const char*>(
             stripe.storage[shard_index].data() + stream_demo::data_shard_header_size);
         std::cout.write(payload_begin,
-                        static_cast<std::streamsize>(data_header->data_length));
+                        static_cast<std::streamsize>(headers[shard_index].data_length));
         if (!std::cout) {
             throw std::runtime_error("stdout write failed");
         }
-        stats.bytes_written += data_header->data_length;
+        stats.bytes_written += headers[shard_index].data_length;
     }
 
     std::cout.flush();
@@ -320,6 +357,7 @@ int main(int argc, char* argv[])
         std::uint64_t next_emit = 0;
         std::uint64_t highest_stripe_seen = 0;
         bool have_seen_packet = false;
+        std::optional<std::uint64_t> eof_stripe_id;
         auto next_stats = Clock::now() + std::chrono::milliseconds(options.stats_ms);
 
         std::vector<std::uint8_t> recv_buffer(stream_demo::packet_header_size
@@ -332,11 +370,22 @@ int main(int argc, char* argv[])
             while (true) {
                 auto it = stripes.find(next_emit);
                 if (it != stripes.end() && it->second.reconstructed) {
-                    const bool saw_final = emit_stripe(it->second, options.k,
-                                                       options.shard_payload_size, stats);
+                    const auto emit_result = emit_stripe(it->second, options.k,
+                                                         options.shard_payload_size, stats);
+                    const bool valid = emit_result.has_value();
+                    const bool saw_final
+                        = valid ? *emit_result : it->second.final_stripe;
                     stripes.erase(it);
                     ++next_emit;
-                    if (saw_final && options.exit_on_eof) {
+                    if (!valid) {
+                        if (stats.reconstructed_stripes > 0) {
+                            --stats.reconstructed_stripes;
+                        }
+                        ++stats.lost_stripes;
+                    }
+                    if ((saw_final && options.exit_on_eof)
+                        || (options.exit_on_eof && eof_stripe_id.has_value()
+                            && next_emit > *eof_stripe_id)) {
                         should_exit = true;
                         break;
                     }
@@ -352,9 +401,17 @@ int main(int argc, char* argv[])
                     = it != stripes.end() && (now - it->second.first_seen) >= timeout;
 
                 if (window_overflow || timed_out_present || timed_out_missing) {
+                    const bool lost_final
+                        = it != stripes.end() ? it->second.final_stripe : false;
                     stripes.erase(next_emit);
                     ++stats.lost_stripes;
                     ++next_emit;
+                    if ((lost_final && options.exit_on_eof)
+                        || (options.exit_on_eof && eof_stripe_id.has_value()
+                            && next_emit > *eof_stripe_id)) {
+                        should_exit = true;
+                        break;
+                    }
                     continue;
                 }
                 break;
@@ -405,23 +462,46 @@ int main(int argc, char* argv[])
                                                                  packet_size);
                 const auto header = stream_demo::parse_packet_header(bytes);
                 if (!header.has_value()) {
+                    ++stats.invalid_packets;
                     continue;
                 }
-                if (header->magic != stream_demo::packet_magic
+                const bool is_eof_marker
+                    = (header->flags & stream_demo::packet_flag_eof_marker) != 0U;
+                if (!stream_demo::packet_header_crc_valid(*header)
+                    || header->magic != stream_demo::packet_magic
                     || header->version != stream_demo::packet_version
                     || header->header_size != stream_demo::packet_header_size
                     || header->stream_id != options.stream_id
                     || header->k != options.k || header->t != options.t
-                    || header->shard_payload_size != options.shard_payload_size
-                    || header->shard_index >= total_shards) {
+                    || header->shard_payload_size != options.shard_payload_size) {
+                    ++stats.invalid_packets;
                     continue;
                 }
                 if (packet_size != stream_demo::packet_header_size
                                        + options.shard_payload_size) {
+                    ++stats.invalid_packets;
+                    continue;
+                }
+                if (is_eof_marker) {
+                    if (header->shard_index != total_shards) {
+                        ++stats.invalid_packets;
+                        continue;
+                    }
+
+                    ++stats.eof_markers_received;
+                    eof_stripe_id = eof_stripe_id.has_value()
+                                        ? std::max(*eof_stripe_id, header->stripe_id)
+                                        : header->stripe_id;
+                    highest_stripe_seen = std::max(highest_stripe_seen, header->stripe_id);
+                    have_seen_packet = true;
+                    continue;
+                }
+                if (header->shard_index >= total_shards) {
+                    ++stats.invalid_packets;
                     continue;
                 }
                 if (header->stripe_id < next_emit) {
-                    ++stats.duplicate_shards;
+                    ++stats.late_shards;
                     continue;
                 }
 
@@ -437,6 +517,14 @@ int main(int argc, char* argv[])
                 }
                 if (stripe.present[header->shard_index]) {
                     ++stats.duplicate_shards;
+                    continue;
+                }
+
+                const auto payload = bytes.subspan(header->header_size);
+                if (header->shard_index < options.k
+                    && !validate_data_shard(payload, options.shard_payload_size).has_value()) {
+                    ++stats.invalid_packets;
+                    ++stats.corrupt_data_shards;
                     continue;
                 }
 

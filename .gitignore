@@ -2,3 +2,13 @@
 /build/
 /.cache/
 .vscode/
+/artifacts/
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyzw

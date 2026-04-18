@@ -181,9 +181,6 @@ private:
         if (k == 0) {
             throw std::invalid_argument("k must be positive");
         }
-        if (t == 0) {
-            throw std::invalid_argument("t must be positive");
-        }
         const std::size_t n = k + t;
         if (n > 256) {
             throw std::invalid_argument("GF256 only supports up to 256 total shards");

@@ -88,3 +88,32 @@ TEST_CASE("reconstruct recovers a missing data shard")
     CHECK(codec.reconstruct(shards, present));
     CHECK(d1 == expected_d1);
 }
+
+TEST_CASE("codec supports zero parity shards for uncoded baseline runs")
+{
+    const auto codec = ReedSolomonCodec::create(3, 0);
+
+    std::array<std::uint8_t, 4> d0 { 1, 2, 3, 4 };
+    std::array<std::uint8_t, 4> d1 { 5, 6, 7, 8 };
+    std::array<std::uint8_t, 4> d2 { 9, 10, 11, 12 };
+
+    const std::vector<Shard> data {
+        Shard { d0.data(), d0.size() },
+        Shard { d1.data(), d1.size() },
+        Shard { d2.data(), d2.size() },
+    };
+    const std::vector<Shard> parity {};
+
+    CHECK(codec.data_shards() == 3);
+    CHECK(codec.parity_shards() == 0);
+    CHECK(codec.total_shards() == 3);
+    CHECK_NOTHROW(codec.compute_parity(data, parity));
+
+    const std::vector<Shard> shards {
+        Shard { d0.data(), d0.size() },
+        Shard { d1.data(), d1.size() },
+        Shard { d2.data(), d2.size() },
+    };
+    const std::vector<bool> present { true, true, true };
+    CHECK(codec.reconstruct(shards, present));
+}

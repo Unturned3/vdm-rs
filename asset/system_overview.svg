@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="360" viewBox="0 0 980 360" role="img" aria-label="VDM-RS transport overview">
+  <defs>
+    <style>
+      .title { font: 700 22px sans-serif; fill: #1f2937; }
+      .label { font: 600 15px sans-serif; fill: #1f2937; }
+      .text { font: 13px sans-serif; fill: #334155; }
+      .small { font: 12px sans-serif; fill: #475569; }
+      .box { rx: 14; ry: 14; stroke-width: 2; }
+      .arrow { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect width="980" height="360" fill="#f8fafc"/>
+  <text x="36" y="38" class="title">VDM-RS: transport-first workflow</text>
+
+  <rect x="38" y="72" width="180" height="96" class="box" fill="#e0f2fe" stroke="#0284c7"/>
+  <text x="58" y="102" class="label">Source bytes</text>
+  <text x="58" y="126" class="text">stdin, file, image tiles,</text>
+  <text x="58" y="145" class="text">or any byte-oriented producer</text>
+
+  <rect x="262" y="72" width="188" height="96" class="box" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="282" y="102" class="label">tx</text>
+  <text x="282" y="126" class="text">stripe into k data shards</text>
+  <text x="282" y="145" class="text">add t parity shards</text>
+
+  <rect x="494" y="72" width="208" height="96" class="box" fill="#fef3c7" stroke="#d97706"/>
+  <text x="514" y="102" class="label">link_sim</text>
+  <text x="514" y="126" class="text">simulate packet loss, latency,</text>
+  <text x="514" y="145" class="text">jitter, queueing, rate limit</text>
+
+  <rect x="744" y="72" width="198" height="96" class="box" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="764" y="102" class="label">rx</text>
+  <text x="764" y="126" class="text">reconstruct stripes from any</text>
+  <text x="764" y="145" class="text">k of k+t shards, emit bytes</text>
+
+  <path d="M218 120 L262 120" class="arrow"/>
+  <path d="M450 120 L494 120" class="arrow"/>
+  <path d="M702 120 L744 120" class="arrow"/>
+
+  <rect x="38" y="220" width="430" height="96" class="box" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="58" y="250" class="label">Core transport tools</text>
+  <text x="58" y="274" class="text">`./build/tx` / `./build/rx` / `./build/link_sim`</text>
+  <text x="58" y="295" class="small">These are the core of the project. Reed-Solomon encoding/decoding and loss simulation live here.</text>
+
+  <rect x="512" y="220" width="430" height="96" class="box" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="532" y="250" class="label">Demo and evaluation helpers</text>
+  <text x="532" y="274" class="text">`demo.md`, `evaluation_demo.md`, `image_demo.md`, `image_pipeline_eval.md`</text>
+  <text x="532" y="295" class="small">Image tooling is only a showcase layer that exercises the byte transport under packet loss.</text>
+</svg>

@@ -46,6 +46,7 @@ struct Stats
     std::uint64_t bytes_read = 0;
     std::uint64_t stripes_sent = 0;
     std::uint64_t packets_sent = 0;
+    std::uint64_t eof_markers_sent = 0;
     std::uint64_t output_bytes = 0;
 };
 
@@ -204,6 +205,7 @@ void log_stats(const Stats& stats, Clock::time_point start)
               << " bytes_read=" << stats.bytes_read
               << " stripes_sent=" << stats.stripes_sent
               << " packets_sent=" << stats.packets_sent
+              << " eof_markers_sent=" << stats.eof_markers_sent
               << " packet_payload_bytes=" << stats.output_bytes
               << " input_rate=" << stream_demo::describe_rate_bps(input_rate)
               << " output_rate=" << stream_demo::describe_rate_bps(output_rate)
@@ -224,6 +226,42 @@ void send_packet(const Destination& destination,
                                destination.address_len);
     if (sent < 0 || static_cast<std::size_t>(sent) != packet.size()) {
         throw std::runtime_error("sendto failed");
+    }
+}
+
+void send_eof_markers(const Destination& destination, const Options& options,
+                      std::uint64_t final_stripe_id, std::uint64_t tx_time_ns,
+                      Stats& stats)
+{
+    const std::size_t marker_count = std::max<std::size_t>(
+        options.t + 1, std::max<std::size_t>(options.repeat_count, std::size_t { 4 }));
+    const std::vector<std::uint8_t> marker_payload(options.shard_payload_size,
+                                                   std::uint8_t { 0 });
+
+    for (std::size_t i = 0; i < marker_count; ++i) {
+        auto header = stream_demo::PacketHeader {
+            .magic = stream_demo::packet_magic,
+            .version = stream_demo::packet_version,
+            .header_size = static_cast<std::uint16_t>(stream_demo::packet_header_size),
+            .stream_id = options.stream_id,
+            .flags = static_cast<std::uint16_t>(stream_demo::packet_flag_final_stripe
+                                                | stream_demo::packet_flag_eof_marker),
+            .stripe_id = final_stripe_id,
+            .tx_time_ns = tx_time_ns,
+            .shard_index = static_cast<std::uint16_t>(options.k + options.t),
+            .k = static_cast<std::uint16_t>(options.k),
+            .t = static_cast<std::uint16_t>(options.t),
+            .shard_payload_size = static_cast<std::uint16_t>(options.shard_payload_size),
+            .header_crc32 = 0,
+        };
+        header.header_crc32 = stream_demo::compute_packet_header_crc32(header);
+
+        auto packet = stream_demo::serialize_packet_header(header);
+        packet.insert(packet.end(), marker_payload.begin(), marker_payload.end());
+        send_packet(destination, packet);
+        ++stats.packets_sent;
+        ++stats.eof_markers_sent;
+        stats.output_bytes += static_cast<std::uint64_t>(packet.size());
     }
 }
 
@@ -310,7 +348,11 @@ int main(int argc, char* argv[])
                     stream_demo::DataShardHeader {
                         .data_length = static_cast<std::uint32_t>(shard_lengths[shard_index]),
                         .flags = flags,
-                        .payload_crc32 = 0,
+                        .payload_crc32 = stream_demo::compute_crc32(
+                            std::span<const std::uint8_t>(
+                                data_storage[shard_index].data()
+                                    + stream_demo::data_shard_header_size,
+                                shard_lengths[shard_index])),
                     },
                     std::span<std::uint8_t>(data_storage[shard_index].data(),
                                             stream_demo::data_shard_header_size));
@@ -341,7 +383,7 @@ int main(int argc, char* argv[])
                                                   : parity_storage[shard_index - options.k];
                     const auto flags = reached_eof ? stream_demo::packet_flag_final_stripe
                                                    : std::uint16_t { 0 };
-                    const auto header = stream_demo::PacketHeader {
+                    auto header = stream_demo::PacketHeader {
                         .magic = stream_demo::packet_magic,
                         .version = stream_demo::packet_version,
                         .header_size = static_cast<std::uint16_t>(
@@ -357,6 +399,7 @@ int main(int argc, char* argv[])
                             options.shard_payload_size),
                         .header_crc32 = 0,
                     };
+                    header.header_crc32 = stream_demo::compute_packet_header_crc32(header);
 
                     auto packet = stream_demo::serialize_packet_header(header);
                     packet.insert(packet.end(), payload.begin(), payload.end());
@@ -375,6 +418,7 @@ int main(int argc, char* argv[])
             }
 
             if (reached_eof) {
+                send_eof_markers(destination, options, stripe_id, tx_time_ns, stats);
                 finished = true;
             }
         }

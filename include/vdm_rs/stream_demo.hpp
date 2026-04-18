@@ -17,6 +17,7 @@ namespace stream_demo {
 constexpr std::uint32_t packet_magic = 0x56444D52U; // "VDMR"
 constexpr std::uint16_t packet_version = 1;
 constexpr std::uint16_t packet_flag_final_stripe = 0x0001U;
+constexpr std::uint16_t packet_flag_eof_marker = 0x0002U;
 constexpr std::uint16_t data_flag_final_stripe = 0x0001U;
 
 struct PacketHeader
@@ -73,6 +74,20 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
     }
 }
 
+[[nodiscard]] inline auto compute_crc32(std::span<const std::uint8_t> bytes)
+    -> std::uint32_t
+{
+    std::uint32_t crc = 0xFFFFFFFFU;
+    for (const std::uint8_t byte : bytes) {
+        crc ^= static_cast<std::uint32_t>(byte);
+        for (int bit = 0; bit < 8; ++bit) {
+            const std::uint32_t mask = 0U - (crc & 1U);
+            crc = (crc >> 1U) ^ (0xEDB88320U & mask);
+        }
+    }
+    return ~crc;
+}
+
 [[nodiscard]] inline auto read_u16_be(std::span<const std::uint8_t> bytes,
                                       std::size_t offset) -> std::uint16_t
 {
@@ -118,6 +133,30 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
     append_u16_be(out, header.shard_payload_size);
     append_u32_be(out, header.header_crc32);
     return out;
+}
+
+[[nodiscard]] inline auto compute_packet_header_crc32(const PacketHeader& header)
+    -> std::uint32_t
+{
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(packet_header_size - sizeof(std::uint32_t));
+    append_u32_be(bytes, header.magic);
+    append_u16_be(bytes, header.version);
+    append_u16_be(bytes, header.header_size);
+    append_u16_be(bytes, header.stream_id);
+    append_u16_be(bytes, header.flags);
+    append_u64_be(bytes, header.stripe_id);
+    append_u64_be(bytes, header.tx_time_ns);
+    append_u16_be(bytes, header.shard_index);
+    append_u16_be(bytes, header.k);
+    append_u16_be(bytes, header.t);
+    append_u16_be(bytes, header.shard_payload_size);
+    return compute_crc32(bytes);
+}
+
+[[nodiscard]] inline auto packet_header_crc_valid(const PacketHeader& header) -> bool
+{
+    return header.header_crc32 == compute_packet_header_crc32(header);
 }
 
 inline void encode_data_shard_header(const DataShardHeader& header,
