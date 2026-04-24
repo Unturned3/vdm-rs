@@ -51,12 +51,14 @@ constexpr std::size_t packet_header_size
 constexpr std::size_t data_shard_header_size
     = sizeof(std::uint32_t) + sizeof(std::uint16_t) + sizeof(std::uint32_t);
 
+// Appends a 16-bit integer in network byte order.
 inline void append_u16_be(std::vector<std::uint8_t>& out, std::uint16_t value)
 {
     out.push_back(static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
     out.push_back(static_cast<std::uint8_t>(value & 0xFFU));
 }
 
+// Appends a 32-bit integer in network byte order.
 inline void append_u32_be(std::vector<std::uint8_t>& out, std::uint32_t value)
 {
     out.push_back(static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
@@ -65,6 +67,7 @@ inline void append_u32_be(std::vector<std::uint8_t>& out, std::uint32_t value)
     out.push_back(static_cast<std::uint8_t>(value & 0xFFU));
 }
 
+// Appends a 64-bit integer in network byte order.
 inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
 {
     for (int shift = 56; shift >= 0; shift -= 8) {
@@ -73,6 +76,7 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
     }
 }
 
+// Reads a big-endian 16-bit integer starting at offset.
 [[nodiscard]] inline auto read_u16_be(std::span<const std::uint8_t> bytes,
                                       std::size_t offset) -> std::uint16_t
 {
@@ -81,6 +85,7 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
         | static_cast<std::uint16_t>(bytes[offset + 1]));
 }
 
+// Reads a big-endian 32-bit integer starting at offset.
 [[nodiscard]] inline auto read_u32_be(std::span<const std::uint8_t> bytes,
                                       std::size_t offset) -> std::uint32_t
 {
@@ -90,6 +95,7 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
            | static_cast<std::uint32_t>(bytes[offset + 3]);
 }
 
+// Reads a big-endian 64-bit integer starting at offset.
 [[nodiscard]] inline auto read_u64_be(std::span<const std::uint8_t> bytes,
                                       std::size_t offset) -> std::uint64_t
 {
@@ -100,6 +106,7 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
     return value;
 }
 
+// Serializes the fixed packet header into the on-the-wire byte layout.
 [[nodiscard]] inline auto serialize_packet_header(const PacketHeader& header)
     -> std::vector<std::uint8_t>
 {
@@ -120,6 +127,7 @@ inline void append_u64_be(std::vector<std::uint8_t>& out, std::uint64_t value)
     return out;
 }
 
+// Writes the protected per-shard header into the start of a shard buffer.
 inline void encode_data_shard_header(const DataShardHeader& header,
                                      std::span<std::uint8_t> out)
 {
@@ -139,6 +147,7 @@ inline void encode_data_shard_header(const DataShardHeader& header,
     out[9] = static_cast<std::uint8_t>(header.payload_crc32 & 0xFFU);
 }
 
+// Parses a packet header if enough bytes are available.
 [[nodiscard]] inline auto parse_packet_header(std::span<const std::uint8_t> bytes)
     -> std::optional<PacketHeader>
 {
@@ -174,6 +183,7 @@ inline void encode_data_shard_header(const DataShardHeader& header,
     return header;
 }
 
+// Parses the per-shard metadata stored inside data shards.
 [[nodiscard]] inline auto parse_data_shard_header(
     std::span<const std::uint8_t> bytes) -> std::optional<DataShardHeader>
 {
@@ -188,6 +198,7 @@ inline void encode_data_shard_header(const DataShardHeader& header,
     return header;
 }
 
+// Interleaves data and parity indices so parity is spread throughout transmission.
 [[nodiscard]] inline auto make_shard_send_order(std::size_t k, std::size_t t)
     -> std::vector<std::size_t>
 {
@@ -207,6 +218,7 @@ inline void encode_data_shard_header(const DataShardHeader& header,
     return order;
 }
 
+// Returns a monotonic timestamp used for latency measurement.
 [[nodiscard]] inline auto steady_time_ns() -> std::uint64_t
 {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -214,6 +226,7 @@ inline void encode_data_shard_header(const DataShardHeader& header,
         std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
 }
 
+// Formats a byte rate using binary throughput units.
 [[nodiscard]] inline auto describe_rate_bps(double bytes_per_second) -> std::string
 {
     if (bytes_per_second <= 0.0) {

@@ -37,6 +37,7 @@ public:
         assert(data_.size() == rows_ * cols_);
     }
 
+    // Returns mutable access to the element at row r, column c.
     T& operator()(std::size_t r, std::size_t c)
     {
         assert(r < rows_);
@@ -44,6 +45,7 @@ public:
         return data_[r * cols_ + c];
     }
 
+    // Returns read-only access to the element at row r, column c.
     const T& operator()(std::size_t r, std::size_t c) const
     {
         assert(r < rows_);
@@ -51,12 +53,16 @@ public:
         return data_[r * cols_ + c];
     }
 
+    // Returns the number of rows.
     [[nodiscard]] std::size_t rows() const { return rows_; }
 
+    // Returns the number of columns.
     [[nodiscard]] std::size_t cols() const { return cols_; }
 
+    // Returns a pointer to the contiguous backing storage.
     T* data() { return data_.data(); }
 
+    // Returns a read-only pointer to the contiguous backing storage.
     const T* data() const { return data_.data(); }
 
 private:
@@ -66,6 +72,7 @@ private:
 };
 
 template <class T>
+// Creates an n x n identity matrix.
 Matrix<T> make_identity(std::size_t n)
 {
     Matrix<T> identity(n, n, T { });
@@ -76,6 +83,7 @@ Matrix<T> make_identity(std::size_t n)
 }
 
 template <class T>
+// Formats the matrix as aligned rows for debugging output.
 std::string to_string(const Matrix<T>& m, int width = 4)
 {
     std::ostringstream oss;

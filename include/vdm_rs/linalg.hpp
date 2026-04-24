@@ -13,6 +13,7 @@
 #include <vector>
 
 template <class T>
+// Returns a freshly allocated matrix product a * b.
 Matrix<T> matmul(const Matrix<T>& a, const Matrix<T>& b)
 {
     assert(a.cols() == b.rows());
@@ -30,6 +31,7 @@ Matrix<T> matmul(const Matrix<T>& a, const Matrix<T>& b)
 
 // TODO: Add a variant that does not zero the output matrix before multiplication?
 template <class T>
+// Writes a * b into c, clearing c first.
 void matmul(const Matrix<T>& a, const Matrix<T>& b, Matrix<T>& c)
 {
     assert(a.cols() == b.rows());

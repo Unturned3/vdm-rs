@@ -23,17 +23,20 @@ struct Manifest
     std::size_t file_size = 0;
 };
 
+// Wraps user-facing paths and tokens in single quotes for messages.
 [[nodiscard]] auto quoted(std::string_view text) -> std::string
 {
     return "'" + std::string(text) + "'";
 }
 
+// Builds a consistent filesystem-related runtime_error message.
 [[nodiscard]] auto make_error(std::string_view message, std::string_view detail)
     -> std::runtime_error
 {
     return std::runtime_error(std::string(message) + " " + quoted(detail));
 }
 
+// Formats the filename used for the shard at the given index.
 [[nodiscard]] auto shard_filename(std::size_t index) -> std::string
 {
     std::ostringstream oss;
@@ -41,6 +44,7 @@ struct Manifest
     return oss.str();
 }
 
+// Reads an entire file into memory.
 [[nodiscard]] auto slurp_file(const fs::path& path) -> std::vector<std::uint8_t>
 {
     std::ifstream input(path, std::ios::binary);
@@ -69,6 +73,7 @@ struct Manifest
     return data;
 }
 
+// Writes a byte buffer to disk, replacing any existing file.
 void write_file(const fs::path& path, const std::vector<std::uint8_t>& data)
 {
     std::ofstream output(path, std::ios::binary);
@@ -85,6 +90,7 @@ void write_file(const fs::path& path, const std::vector<std::uint8_t>& data)
     }
 }
 
+// Persists the encode parameters needed for later reconstruction.
 void write_manifest(const fs::path& output_dir, const Manifest& manifest)
 {
     std::ofstream output(output_dir / "manifest.txt");
@@ -98,6 +104,7 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
     output << "file_size " << manifest.file_size << '\n';
 }
 
+// Reads the shard manifest written during encode.
 [[nodiscard]] auto read_manifest(const fs::path& input_dir) -> Manifest
 {
     std::ifstream input(input_dir / "manifest.txt");
@@ -128,12 +135,14 @@ void write_manifest(const fs::path& output_dir, const Manifest& manifest)
     return manifest;
 }
 
+// Computes ceil(numerator / denominator) for positive sizes.
 [[nodiscard]] auto ceil_div(std::size_t numerator, std::size_t denominator)
     -> std::size_t
 {
     return (numerator + denominator - 1) / denominator;
 }
 
+// Prints a simple throughput summary for encode or decode work.
 void print_codec_timing(std::string_view label, std::size_t payload_bytes,
                         std::chrono::steady_clock::duration elapsed)
 {
@@ -148,6 +157,7 @@ void print_codec_timing(std::string_view label, std::size_t payload_bytes,
               << " MiB/s over " << mib << " MiB payload)\n";
 }
 
+// Splits a file into data shards, computes parity, and writes everything to disk.
 void encode_file(const fs::path& input_file, const fs::path& output_dir, std::size_t k,
                  std::size_t t)
 {
@@ -202,6 +212,7 @@ void encode_file(const fs::path& input_file, const fs::path& output_dir, std::si
     print_codec_timing("encode", input.size(), encode_elapsed);
 }
 
+// Reconstructs the original file from whatever shards are present on disk.
 void decode_file(const fs::path& input_dir, const fs::path& output_file)
 {
     const auto manifest = read_manifest(input_dir);
@@ -256,6 +267,7 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
     print_codec_timing("decode", manifest.file_size, decode_elapsed);
 }
 
+// Prints the small command-line interface for the file demo tool.
 void print_usage(std::string_view program_name)
 {
     std::cout << "usage:\n";
@@ -265,6 +277,7 @@ void print_usage(std::string_view program_name)
 
 } // namespace
 
+// Dispatches to the encode or decode subcommand.
 int main(int argc, char* argv[])
 {
     try {

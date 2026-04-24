@@ -21,6 +21,7 @@ public:
     {
     }
 
+    // Returns the shared multiplication lookup table for GF(2^8).
     static const auto& mul_table() // Class-wide multiplication lookup table
     {
         // Initialized on first use
@@ -28,6 +29,7 @@ public:
         return table;
     }
 
+    // Returns the shared inverse lookup table for non-zero field elements.
     static const auto& inv_table() // Class-wide multiplicative inverse lookup table
     {
         // Initialized on first use
@@ -35,12 +37,16 @@ public:
         return table;
     }
 
+    // Returns the additive identity.
     [[nodiscard]] static constexpr GF256 zero() { return GF256 { 0 }; }
 
+    // Returns the multiplicative identity.
     [[nodiscard]] static constexpr GF256 one() { return GF256 { 1 }; }
 
+    // Checks whether this element is zero.
     [[nodiscard]] constexpr bool is_zero() const { return value_ == 0; }
 
+    // Exposes the underlying byte representation.
     [[nodiscard]] constexpr storage_type value() const { return value_; }
 
     friend constexpr bool operator==(GF256, GF256) = default;
@@ -56,11 +62,13 @@ public:
         return GF256 { static_cast<storage_type>(a.value_ ^ b.value_) };
     }
 
+    // Multiplies two field elements using the precomputed table.
     friend GF256 operator*(GF256 a, GF256 b)
     {
         return GF256 { mul_table()[a.value_][b.value_] };
     }
 
+    // Divides by multiplying with the multiplicative inverse of b.
     friend GF256 operator/(GF256 a, GF256 b)
     {
         assert(!b.is_zero());
@@ -73,30 +81,35 @@ public:
         return *this;
     }
 
+    // Returns the multiplicative inverse; zero is rejected with an assert.
     [[nodiscard]] GF256 inverse() const
     {
         assert(!is_zero());
         return GF256 { inv_table()[value_] };
     }
 
+    // Accumulates rhs using field addition.
     GF256& operator+=(GF256 rhs)
     {
         value_ ^= rhs.value_;
         return *this;
     }
 
+    // Subtracts rhs, which is identical to addition in GF(2^8).
     GF256& operator-=(GF256 rhs)
     {
         value_ ^= rhs.value_;
         return *this;
     }
 
+    // Multiplies this element in place.
     GF256& operator*=(GF256 rhs)
     {
         value_ = mul_table()[value_][rhs.value_];
         return *this;
     }
 
+    // Divides this element in place.
     GF256& operator/=(GF256 rhs)
     {
         assert(!rhs.is_zero());
@@ -110,7 +123,7 @@ private:
     // Rjindael (AES) irreducible polynomial: x^8 + x^4 + x^3 + x + 1
     static constexpr storage_type irreducible_polynomial_low_ = 0x1B;
 
-    // Synthetic multiplication of GF256 elements, modulo the irreducible polynomial.
+    // Multiplies two polynomial representations and reduces modulo the field polynomial.
     static storage_type poly_mul(storage_type a, storage_type b)
     {
         storage_type result = 0;
@@ -129,6 +142,7 @@ private:
         return result;
     }
 
+    // Builds the full byte-by-byte multiplication table once at startup.
     static std::array<std::array<storage_type, 256>, 256> make_mul_table()
     {
         std::array<std::array<storage_type, 256>, 256> table { };
@@ -142,6 +156,7 @@ private:
         return table;
     }
 
+    // Builds inverse lookups for all non-zero field elements.
     static std::array<storage_type, 256> make_inv_table()
     {
         std::array<storage_type, 256> table { };
@@ -162,6 +177,7 @@ private:
 
 // For printing GF256 values
 
+// Prints a field element as its integer byte value.
 inline std::ostream& operator<<(std::ostream& os, const GF256& x)
 {
     return os << static_cast<int>(x.value());
@@ -170,6 +186,7 @@ inline std::ostream& operator<<(std::ostream& os, const GF256& x)
 template <>
 struct std::formatter<GF256> : std::formatter<int>
 {
+    // Reuses integer formatting so GF256 works with std::format.
     auto format(const GF256& x, auto& ctx) const
     {
         return std::formatter<int>::format(x.value(), ctx);

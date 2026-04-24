@@ -60,6 +60,7 @@ struct Stats
     std::uint64_t bytes_forwarded = 0;
 };
 
+// Converts a ratio into a percentage while handling a zero denominator.
 [[nodiscard]] auto percent(std::uint64_t numerator, std::uint64_t denominator) -> double
 {
     if (denominator == 0) {
@@ -72,6 +73,7 @@ struct Stats
 class SocketHandle
 {
 public:
+    // Takes ownership of an already-open socket descriptor.
     explicit SocketHandle(int fd)
         : fd_(fd)
     {
@@ -80,6 +82,7 @@ public:
     SocketHandle(const SocketHandle&) = delete;
     auto operator=(const SocketHandle&) -> SocketHandle& = delete;
 
+    // Closes the socket on scope exit.
     ~SocketHandle()
     {
         if (fd_ >= 0) {
@@ -87,12 +90,14 @@ public:
         }
     }
 
+    // Returns the raw file descriptor without releasing ownership.
     [[nodiscard]] auto get() const noexcept -> int { return fd_; }
 
 private:
     int fd_ = -1;
 };
 
+// Parses and validates the link simulation parameters.
 [[nodiscard]] auto parse_args(int argc, char* argv[]) -> Options
 {
     argparse::ArgumentParser program("link_sim");
@@ -154,6 +159,7 @@ private:
     return options;
 }
 
+// Binds a nonblocking UDP socket for incoming packets.
 [[nodiscard]] auto bind_socket(const std::string& host, const std::string& port) -> int
 {
     std::string last_error = "unknown bind error";
@@ -200,6 +206,7 @@ private:
     throw std::runtime_error("failed to bind UDP socket: " + last_error);
 }
 
+// Resolves the outgoing UDP destination address.
 [[nodiscard]] auto resolve_destination(const std::string& host, const std::string& port)
     -> Destination
 {
@@ -227,6 +234,7 @@ private:
     throw std::runtime_error("failed to resolve destination");
 }
 
+// Emits simulator statistics about forwarding rate, drops, and queue depth.
 void log_stats(const Stats& stats, std::size_t queued, std::uint64_t rate_bps,
                Clock::time_point start)
 {
@@ -252,6 +260,7 @@ void log_stats(const Stats& stats, std::size_t queued, std::uint64_t rate_bps,
 
 } // namespace
 
+// Applies configurable loss, delay, and rate limits to forwarded UDP packets.
 int main(int argc, char* argv[])
 {
     try {
@@ -375,6 +384,7 @@ int main(int argc, char* argv[])
                 const auto packet_size = static_cast<std::size_t>(received);
                 const auto latency = std::chrono::milliseconds(options.latency_ms);
                 const auto jitter = std::chrono::milliseconds(jitter_dist(rng));
+                // Store packets until their release time so latency/jitter can be simulated.
                 queue.push_back(QueuedPacket {
                     .bytes = std::vector<std::uint8_t>(
                         recv_buffer.begin(),

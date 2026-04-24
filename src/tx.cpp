@@ -49,6 +49,7 @@ struct Stats
     std::uint64_t output_bytes = 0;
 };
 
+// Converts a ratio into a percentage while handling a zero denominator.
 [[nodiscard]] auto percent(std::uint64_t numerator, std::uint64_t denominator) -> double
 {
     if (denominator == 0) {
@@ -61,7 +62,10 @@ struct Stats
 class SocketHandle
 {
 public:
+    // Creates an empty handle that owns no socket.
     SocketHandle() = default;
+
+    // Takes ownership of an already-open file descriptor.
     explicit SocketHandle(int fd)
         : fd_(fd)
     {
@@ -70,12 +74,14 @@ public:
     SocketHandle(const SocketHandle&) = delete;
     auto operator=(const SocketHandle&) -> SocketHandle& = delete;
 
+    // Transfers socket ownership from another handle.
     SocketHandle(SocketHandle&& other) noexcept
         : fd_(other.fd_)
     {
         other.fd_ = -1;
     }
 
+    // Replaces this handle with another owned socket.
     auto operator=(SocketHandle&& other) noexcept -> SocketHandle&
     {
         if (this != &other) {
@@ -86,13 +92,16 @@ public:
         return *this;
     }
 
+    // Closes the owned socket on scope exit.
     ~SocketHandle() { close_if_needed_(); }
 
+    // Returns the raw file descriptor without releasing ownership.
     [[nodiscard]] auto get() const noexcept -> int { return fd_; }
 
 private:
     int fd_ = -1;
 
+    // Closes the socket if this handle currently owns one.
     void close_if_needed_() noexcept
     {
         if (fd_ >= 0) {
@@ -101,6 +110,7 @@ private:
     }
 };
 
+// Parses and validates the sender command-line options.
 [[nodiscard]] auto parse_args(int argc, char* argv[]) -> Options
 {
     argparse::ArgumentParser program("tx");
@@ -154,6 +164,7 @@ private:
     return options;
 }
 
+// Resolves the destination address and opens a UDP socket for transmission.
 [[nodiscard]] auto resolve_destination(const std::string& host, const std::string& port)
     -> Destination
 {
@@ -186,6 +197,7 @@ private:
     throw std::runtime_error("failed to create UDP socket");
 }
 
+// Emits periodic sender throughput and FEC overhead statistics.
 void log_stats(const Stats& stats, Clock::time_point start)
 {
     const auto elapsed = std::chrono::duration<double>(Clock::now() - start).count();
@@ -216,6 +228,7 @@ void log_stats(const Stats& stats, Clock::time_point start)
               << '\n';
 }
 
+// Sends one fully assembled UDP packet to the configured destination.
 void send_packet(const Destination& destination,
                  const std::vector<std::uint8_t>& packet)
 {
@@ -229,6 +242,7 @@ void send_packet(const Destination& destination,
 
 } // namespace
 
+// Reads stdin, encodes stripes, and streams them as UDP packets.
 int main(int argc, char* argv[])
 {
     try {
@@ -268,6 +282,7 @@ int main(int argc, char* argv[])
 
             bool reached_eof = false;
             for (std::size_t shard_index = 0; shard_index < options.k; ++shard_index) {
+                // Reserve the prefix for the protected per-shard metadata.
                 auto payload = std::span<std::uint8_t>(
                     data_storage[shard_index].data() + stream_demo::data_shard_header_size,
                     data_capacity);
@@ -358,6 +373,7 @@ int main(int argc, char* argv[])
                         .header_crc32 = 0,
                     };
 
+                    // Packet layout is [fixed header][encoded shard payload].
                     auto packet = stream_demo::serialize_packet_header(header);
                     packet.insert(packet.end(), payload.begin(), payload.end());
                     send_packet(destination, packet);

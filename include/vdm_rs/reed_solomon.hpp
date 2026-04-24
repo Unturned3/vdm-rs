@@ -18,28 +18,35 @@ struct Shard
 class ReedSolomonCodec
 {
 public:
+    // Validates parameters and returns a systematic Reed-Solomon codec instance.
     [[nodiscard]] static ReedSolomonCodec create(std::size_t k, std::size_t t)
     {
         validate_params_(k, t);
         return ReedSolomonCodec(k, t);
     }
 
+    // Returns the number of original data shards per stripe.
     [[nodiscard]] std::size_t data_shards() const noexcept { return k_; }
 
+    // Returns the number of parity shards per stripe.
     [[nodiscard]] std::size_t parity_shards() const noexcept { return t_; }
 
+    // Returns the total shard count k + t.
     [[nodiscard]] std::size_t total_shards() const noexcept { return n_; }
 
+    // Exposes the systematic generator matrix used for encoding and decoding.
     [[nodiscard]] const Matrix<GF256>& generator_matrix() const noexcept
     {
         return generator_matrix_;
     }
 
+    // Returns the parity rows of the generator matrix.
     [[nodiscard]] const Matrix<GF256>& parity_matrix() const noexcept
     {
         return parity_matrix_;
     }
 
+    // Computes parity shards in place for a full set of data shards.
     void compute_parity(const std::vector<Shard>& data_shards,
                         const std::vector<Shard>& parity_shards) const
     {
@@ -69,6 +76,7 @@ public:
         }
     }
 
+    // Reconstructs all data and parity shards when at least k shards are present.
     [[nodiscard]] bool reconstruct(const std::vector<Shard>& shards,
                                    const std::vector<bool>& present) const
     {
@@ -156,6 +164,7 @@ public:
     }
 
 private:
+    // Builds cached encoding matrices once the dimensions are known.
     ReedSolomonCodec(std::size_t k, std::size_t t)
         : k_(k)
         , t_(t)
@@ -176,6 +185,7 @@ private:
     mutable std::vector<Shard> data_views_scratch_;
     mutable std::vector<Shard> parity_views_scratch_;
 
+    // Rejects unsupported shard counts before any matrix work begins.
     static void validate_params_(std::size_t k, std::size_t t)
     {
         if (k == 0) {
@@ -190,6 +200,7 @@ private:
         }
     }
 
+    // Computes base^exponent in GF(2^8) for Vandermonde construction.
     [[nodiscard]] static GF256 pow_(GF256 base, std::size_t exponent)
     {
         GF256 result = GF256::one();
@@ -199,6 +210,7 @@ private:
         return result;
     }
 
+    // Builds a systematic generator matrix from a Vandermonde basis.
     [[nodiscard]] static Matrix<GF256> build_generator_matrix_(std::size_t k,
                                                                std::size_t n)
     {
@@ -224,6 +236,7 @@ private:
         return matmul(vandermonde, top);
     }
 
+    // Extracts the parity portion of the generator matrix.
     [[nodiscard]] static Matrix<GF256>
     build_parity_matrix_(const Matrix<GF256>& generator_matrix, std::size_t k,
                          std::size_t t)
@@ -237,6 +250,7 @@ private:
         return parity;
     }
 
+    // Verifies that all encoding shards are allocated and have matching sizes.
     [[nodiscard]] static std::size_t
     validate_equal_sizes_(const std::vector<Shard>& data_shards,
                           const std::vector<Shard>& parity_shards)
@@ -255,6 +269,7 @@ private:
         return shard_size;
     }
 
+    // Uses the first present shard as the expected size for reconstruction.
     [[nodiscard]] static std::size_t
     validate_present_sizes_(const std::vector<Shard>& shards,
                             const std::vector<bool>& present)
@@ -277,6 +292,7 @@ private:
         return shard_size;
     }
 
+    // Rejects null shard pointers and returns the shard length.
     [[nodiscard]] static std::size_t validate_shard_(const Shard& shard)
     {
         if (shard.data == nullptr) {
@@ -285,6 +301,7 @@ private:
         return shard.size;
     }
 
+    // Confirms a shard is allocated and matches the expected size.
     static void validate_shard_size_(const Shard& shard, std::size_t expected_size)
     {
         if (shard.data == nullptr) {
@@ -295,6 +312,7 @@ private:
         }
     }
 
+    // Accumulates coeff * src into dst using the GF256 multiplication table.
     static void addmul_shard_(std::uint8_t* dst, const std::uint8_t* src,
                               std::uint8_t coeff,
                               std::size_t shard_size)

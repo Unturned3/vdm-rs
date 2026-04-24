@@ -51,6 +51,7 @@ struct Stats
     std::uint64_t latency_max_ns = 0;
 };
 
+// Converts a ratio into a percentage while handling a zero denominator.
 [[nodiscard]] auto percent(std::uint64_t numerator, std::uint64_t denominator) -> double
 {
     if (denominator == 0) {
@@ -62,6 +63,7 @@ struct Stats
 
 struct StripeState
 {
+    // Allocates storage for one stripe and tracks which shards have arrived.
     explicit StripeState(std::size_t shard_count, std::size_t shard_size)
         : storage(shard_count, std::vector<std::uint8_t>(shard_size, std::uint8_t { 0 }))
         , present(shard_count, false)
@@ -80,6 +82,7 @@ struct StripeState
 class SocketHandle
 {
 public:
+    // Takes ownership of an already-open socket descriptor.
     explicit SocketHandle(int fd)
         : fd_(fd)
     {
@@ -88,6 +91,7 @@ public:
     SocketHandle(const SocketHandle&) = delete;
     auto operator=(const SocketHandle&) -> SocketHandle& = delete;
 
+    // Closes the socket on scope exit.
     ~SocketHandle()
     {
         if (fd_ >= 0) {
@@ -95,12 +99,14 @@ public:
         }
     }
 
+    // Returns the raw file descriptor without releasing ownership.
     [[nodiscard]] auto get() const noexcept -> int { return fd_; }
 
 private:
     int fd_ = -1;
 };
 
+// Parses and validates the receiver command-line options.
 [[nodiscard]] auto parse_args(int argc, char* argv[]) -> Options
 {
     argparse::ArgumentParser program("rx");
@@ -162,6 +168,7 @@ private:
     return options;
 }
 
+// Binds a nonblocking UDP socket, falling back to wildcard bind if needed.
 [[nodiscard]] auto bind_socket(const std::string& host, const std::string& port) -> int
 {
     std::string last_error = "unknown bind error";
@@ -209,6 +216,7 @@ private:
     throw std::runtime_error("failed to bind UDP socket: " + last_error);
 }
 
+// Emits receiver statistics, including goodput and latency estimates.
 void log_stats(const Stats& stats, std::size_t inflight, Clock::time_point start)
 {
     const auto elapsed = std::chrono::duration<double>(Clock::now() - start).count();
@@ -239,6 +247,7 @@ void log_stats(const Stats& stats, std::size_t inflight, Clock::time_point start
               << " inflight=" << inflight << '\n';
 }
 
+// Detects whether a gap before next_emit has waited long enough to be declared lost.
 [[nodiscard]] auto maybe_missing_stripe_timed_out(
     std::uint64_t next_emit, const std::map<std::uint64_t, StripeState>& stripes,
     std::chrono::milliseconds timeout, Clock::time_point now) -> bool
@@ -255,6 +264,7 @@ void log_stats(const Stats& stats, std::size_t inflight, Clock::time_point start
     return now - candidate >= timeout;
 }
 
+// Writes reconstructed payload bytes to stdout and reports whether EOF was seen.
 [[nodiscard]] auto emit_stripe(StripeState& stripe, std::size_t k,
                                std::size_t shard_payload_size, Stats& stats) -> bool
 {
@@ -292,6 +302,7 @@ void log_stats(const Stats& stats, std::size_t inflight, Clock::time_point start
 
 } // namespace
 
+// Receives UDP shards, reconstructs stripes, and streams recovered bytes to stdout.
 int main(int argc, char* argv[])
 {
     try {
@@ -428,6 +439,7 @@ int main(int argc, char* argv[])
                 have_seen_packet = true;
                 highest_stripe_seen = std::max(highest_stripe_seen, header->stripe_id);
 
+                // Keep per-stripe storage until we can emit stripes in order.
                 auto [it, inserted] = stripes.try_emplace(
                     header->stripe_id, total_shards, options.shard_payload_size);
                 StripeState& stripe = it->second;
