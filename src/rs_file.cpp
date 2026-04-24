@@ -1,8 +1,8 @@
 #include "vdm_rs/reed_solomon.hpp"
 #include <chrono>
-#include <iomanip>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -12,7 +12,8 @@
 
 namespace fs = std::filesystem;
 
-namespace {
+namespace
+{
 
 struct Manifest
 {
@@ -147,8 +148,8 @@ void print_codec_timing(std::string_view label, std::size_t payload_bytes,
               << " MiB/s over " << mib << " MiB payload)\n";
 }
 
-void encode_file(const fs::path& input_file, const fs::path& output_dir,
-                 std::size_t k, std::size_t t)
+void encode_file(const fs::path& input_file, const fs::path& output_dir, std::size_t k,
+                 std::size_t t)
 {
     const auto codec = ReedSolomonCodec::create(k, t);
     const auto input = slurp_file(input_file);
@@ -183,11 +184,10 @@ void encode_file(const fs::path& input_file, const fs::path& output_dir,
     codec.compute_parity(data_views, parity_views);
     const auto encode_elapsed = std::chrono::steady_clock::now() - encode_start;
 
-    write_manifest(output_dir,
-                   Manifest { .k = k,
-                              .t = t,
-                              .shard_size = shard_size,
-                              .file_size = input.size() });
+    write_manifest(
+        output_dir,
+        Manifest {
+            .k = k, .t = t, .shard_size = shard_size, .file_size = input.size() });
 
     for (std::size_t i = 0; i < k; ++i) {
         write_file(output_dir / shard_filename(i), data_shards[i]);
@@ -197,8 +197,8 @@ void encode_file(const fs::path& input_file, const fs::path& output_dir,
     }
 
     std::cout << "encoded " << quoted(input_file.string()) << " into "
-              << codec.total_shards() << " shards in "
-              << quoted(output_dir.string()) << '\n';
+              << codec.total_shards() << " shards in " << quoted(output_dir.string())
+              << '\n';
     print_codec_timing("encode", input.size(), encode_elapsed);
 }
 
@@ -226,8 +226,8 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
         auto bytes = slurp_file(path);
         if (bytes.size() != manifest.shard_size) {
             std::ostringstream oss;
-            oss << "shard " << quoted(path.string()) << " has size "
-                << bytes.size() << ", expected " << manifest.shard_size;
+            oss << "shard " << quoted(path.string()) << " has size " << bytes.size()
+                << ", expected " << manifest.shard_size;
             throw std::runtime_error(oss.str());
         }
         std::copy(bytes.begin(), bytes.end(), shard_storage[i].begin());
@@ -243,8 +243,8 @@ void decode_file(const fs::path& input_dir, const fs::path& output_file)
     std::vector<std::uint8_t> output;
     output.reserve(manifest.file_size);
     for (std::size_t i = 0; i < manifest.k && output.size() < manifest.file_size; ++i) {
-        const auto bytes_to_copy = std::min(manifest.shard_size,
-                                            manifest.file_size - output.size());
+        const auto bytes_to_copy
+            = std::min(manifest.shard_size, manifest.file_size - output.size());
         output.insert(output.end(), shard_storage[i].begin(),
                       shard_storage[i].begin()
                           + static_cast<std::ptrdiff_t>(bytes_to_copy));

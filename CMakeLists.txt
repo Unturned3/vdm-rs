@@ -77,11 +77,11 @@ target_link_options(vdm_rs_project_options INTERFACE
     >
 )
 
-add_executable(main
-    src/main.cpp
+add_executable(rs_file
+    src/rs_file.cpp
 )
 
-target_link_libraries(main
+target_link_libraries(rs_file
     PRIVATE
     argparse
     vdm_rs
